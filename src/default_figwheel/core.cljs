@@ -12,21 +12,27 @@
 
 
 (defn setup []
-  ; Set frame rate to 30 frames per second.
-  (q/frame-rate 30)
-  ; Set color mode to HSB (HSV) instead of default RGB.
+  (q/frame-rate 50)
   (q/color-mode :hsb)
-  ; setup function returns initial state. It contains
-  ; circle color and position.
   (q/background 60)
 
   {:color 0
    :angle 0})
 
 (defn update-state [state]
-  {:color (mod (* 255 (/ (q/frame-count) 200)               ;(/ (q/frame-count) 10)
-                  ) 255)
-   :angle (+ (:angle state) 0.1)})
+  {:color      (mod (* (/ (q/frame-count)
+                         1000)
+                      255)
+                 255)
+   :angle      (+ (:angle state) (/ 0.25 2))
+   :ctrl-point (let [bound #(q/constrain % -3 3)
+                     easing 0.03
+                     prev-x (get-in state [:ctrl-point :x])
+                     prev-y (get-in state [:ctrl-point :y])
+                     x-dist (- (q/mouse-x) prev-x)
+                     y-dist (- (q/mouse-y) prev-y)]
+                 {:x (+ prev-x (bound (* x-dist easing))),
+                  :y (+ prev-y (bound (* y-dist easing)))})})
 
 (defn f [t]
   [(* (* t t) (q/sin t))
@@ -35,33 +41,47 @@
 (defn stagger-plot
   [f from to step increment]
   (doseq [two-points (->> (range from to step)
-                          (mapcat #(list % (+ % increment)))
-                          (map f)
-                          (partition 2 1))]
+                       (mapcat #(list % (+ % increment)))
+                       (map f)
+                       (partition 2 1))]
     (apply q/line two-points)))
-
-(defn draw-plot
-  [f from to step]
-  (doseq [two-points (->> (range from to step)
-                          (map f)
-                          (partition 2 1))]
-    (apply q/line two-points)))
-
-
 
 (defn draw [state]
-  ; Clear the sketch by filling it with light-grey color.
-(q/background 24)
-  ; Set circle color.
-  (q/stroke (:color state) 255 255)
-  ; Calculate x and y coordinates of the circle.
-  (q/with-translation [(/ (q/width) 2) (/ (q/height) 2)]
-                      ; (let [t (/ (q/frame-count) 10)] (q/line (f t) (f (- t 2.1))))
-                      (stagger-plot f 0 35 0.1 (+ q/PI (* q/PI (/ (/ (q/mouse-x) 1) (q/width)))))))
+  (let [color (:color state)
+        ctrl-y (get-in state [:ctrl-point :y])
+        ctrl-x (get-in state [:ctrl-point :x])
+        angle (:angle state)]
+    (q/background 24)
+    (q/stroke color 255 255 200)
+    (q/with-translation [ctrl-x ctrl-y]
+      (stagger-plot f 0 40
+        (+ 0.05
+          (* 0.5
+            (/ ctrl-y
+              (q/height))))
+        (+ q/PI
+          (* q/TWO-PI
+            (/ ctrl-x
+              (q/width))))))
+    (q/no-stroke)
+    (q/fill color 255 255 100)
+    (q/rect-mode :center)
+    (let [draw-tri (fn []
+                     (apply q/triangle
+                       (map (partial *
+                              (* 5 (+ 1 (* 0.2 (q/sin (/ angle 6))))))
+                         [0 2 (q/sqrt 3) -1 (- (q/sqrt 3)) -1])))
+          draw-fn (fn [k]
+                    (q/with-rotation [(* k angle)]
+                      (draw-tri)))]
+      (q/with-translation [ctrl-x ctrl-y]
+        (draw-fn 1)
+        (draw-fn -1)
+        (draw-fn (q/sqrt 2))))))
 
 (q/defsketch default-figwheel
   :host "default-figwheel"
-  :size [1500 1000]
+  :size [1000 1000]
   ; setup function called only once, during sketch initialization.
   :setup setup
   ; update-state is called on each iteration before draw-state.
